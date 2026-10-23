@@ -8,9 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The broker client is here so you can connect immediately.
-         Add any other packages you want (resilience, logging, etc.). -->
-    <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
+    <ProjectReference Include="..\Telemetry.Infrastructure\Telemetry.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
