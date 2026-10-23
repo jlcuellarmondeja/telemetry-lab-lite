@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace Telemetry.Infrastructure.Messaging.RabbitMq.Options;
+namespace Telemetry.Infrastructure.Options;
 
 public sealed class RabbitMqOptions
 {
@@ -27,4 +27,7 @@ public sealed class RabbitMqOptions
     // Maximum number of unacknowledged messages that Rabbit delivers to us at once.
     [Range(1, ushort.MaxValue)]
     public ushort PrefetchCount { get; init; } = 100;
+
+    [Required]
+    public string QuarantineQueueName { get; init; } = default!;
 }

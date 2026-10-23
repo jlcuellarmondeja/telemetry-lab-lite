@@ -2,4 +2,4 @@
 
 namespace Telemetry.Application.Dispatching;
 
-public sealed record TelemetryEnvelope(TelemetryEvent Event, Action Ack);
+public sealed record TelemetryEnvelope(TelemetryEvent Event, Action Ack, Action<string> Quarantine);

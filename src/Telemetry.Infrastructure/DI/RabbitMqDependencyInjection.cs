@@ -2,7 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
 using Telemetry.Infrastructure.Messaging.RabbitMq.Consumers;
-using Telemetry.Infrastructure.Messaging.RabbitMq.Options;
+using Telemetry.Infrastructure.Options;
 
 namespace Telemetry.Infrastructure.DI;
 

@@ -1,18 +1,20 @@
 ﻿using Microsoft.Extensions.Logging;
 using Telemetry.Application.Abstractions;
 using Telemetry.Domain.Events;
+using Telemetry.Domain.Validation;
 
 namespace Telemetry.Application.Processing;
 
-public sealed class LoggingTelemetryProcessor(ILogger<LoggingTelemetryProcessor> logger) : ITelemetryProcessor
+public sealed class TelemetryProcessor(TimeProvider timeProvider, ILogger<TelemetryProcessor> logger) : ITelemetryProcessor
 {
-    public Task ProcessAsync(TelemetryEvent telemetryEvent, CancellationToken cancellationToken)
+    public Task<ProcessingResult> ProcessAsync(TelemetryEvent telemetryEvent, CancellationToken cancellationToken)
     {
-        logger.LogInformation("Processed {DeviceId} {EventId} on thread {Thread}",
-                               telemetryEvent.DeviceId,
-                               telemetryEvent.EventId,
-                               Environment.CurrentManagedThreadId);
+        // TimeProvider instead of DateTimeOffset.UtcNow → tests can fix "now".
+        var error = TelemetryValidator.Validate(telemetryEvent, timeProvider.GetUtcNow());
+        if (error is not null)
+            return Task.FromResult(ProcessingResult.Invalid(error));
 
-        return Task.CompletedTask;
+        logger.LogDebug("Processed {DeviceId} {EventId}", telemetryEvent.DeviceId, telemetryEvent.EventId);
+        return Task.FromResult(ProcessingResult.Ok);
     }
 }

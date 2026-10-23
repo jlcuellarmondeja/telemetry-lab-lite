@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using System.Threading.Channels;
 using Telemetry.Application.Abstractions;
 using Telemetry.Application.Options;
+using Telemetry.Application.Processing;
 
 namespace Telemetry.Application.Dispatching;
 
@@ -69,20 +70,26 @@ public sealed class PartitionedDispatcher
 
     private async Task ReadPartitionAsync(ChannelReader<TelemetryEnvelope> reader, int partition)
     {
-        /// ReadAllAsync completes only when the row is closed AND empty → natural drain.
+        // ReadAllAsync ends only when the row is completed AND empty → natural draining.
         await foreach (var envelope in reader.ReadAllAsync())
         {
             try
             {
-                await _processor.ProcessAsync(envelope.Event, CancellationToken.None);
+                var result = await _processor.ProcessAsync(envelope.Event, CancellationToken.None);
+
+                if (result.Outcome == ProcessingOutcome.Invalid)
+                {
+                    _logger.LogWarning("Quarantining {EventId}: {Reason}", envelope.Event.EventId, result.Reason);
+                    envelope.Quarantine(result.Reason!);
+                    continue;
+                }
+
+                envelope.Ack();
             }
             catch (Exception ex)
             {
-                // A failure NEVER takes the checkout out of service or blocks the queue.
+                // A failure NEVER kills the reader or blocks the row.
                 _logger.LogError(ex, "Partition {Partition} failed processing {EventId}", partition, envelope.Event.EventId);
-            }
-            finally
-            {
                 envelope.Ack();
             }
         }

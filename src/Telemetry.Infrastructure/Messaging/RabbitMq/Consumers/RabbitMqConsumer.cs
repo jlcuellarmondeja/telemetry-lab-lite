@@ -7,7 +7,7 @@ using System.Threading.Channels;
 using Telemetry.Application.Dispatching;
 using Telemetry.Domain.Events;
 using Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
-using Telemetry.Infrastructure.Messaging.RabbitMq.Options;
+using Telemetry.Infrastructure.Options;
 
 namespace Telemetry.Infrastructure.Messaging.RabbitMq.Consumers;
 
@@ -35,6 +35,9 @@ public sealed class RabbitMqConsumer(
         // Same as for the producer; if it differs → PRECONDITION_FAILED.
         _channel.QueueDeclare(_options.QueueName, durable: true, exclusive: false, autoDelete: false, arguments: null);
 
+        // Quarantine queue: must exist before publishing, otherwise Rabbit silently drops the message.
+        _channel.QueueDeclare(_options.QuarantineQueueName, durable: true, exclusive: false, autoDelete: false, arguments: null);
+
         // THE LIMIT: Rabbit does not send us more than PrefetchCount messages without an acknowledgment.
         _channel.BasicQos(prefetchSize: 0, prefetchCount: _options.PrefetchCount, global: false);
 
@@ -51,39 +54,47 @@ public sealed class RabbitMqConsumer(
     {
         var deliveryTag = ea.DeliveryTag;
 
-        var telemetryEvent = TryDeserialize(ea.Body.Span);
-        if (telemetryEvent is null || string.IsNullOrWhiteSpace(telemetryEvent.DeviceId))
+        // COPY: RabbitMQ reuses ea.Body's buffer once this method returns,
+        // and the quarantine callback may run later from a partition reader.
+        var body = ea.Body.ToArray();
+
+        var (telemetryEvent, error) = TryDeserialize(body);
+        if (telemetryEvent is null)
         {
-            // Poison: Malformed JSON or missing deviceId (we wouldn't know which row to send it to).
-            // Never re-enqueued. Block ③: instead of just an 'ack', it will be sent to the quarantine queue.
-            logger.LogWarning("Poison message discarded (delivery {Tag})", deliveryTag);
-            Ack(deliveryTag);
+            // Poison (broken JSON / no deviceId): we can't even pick a row → quarantine right here.
+            QuarantineAndAck(deliveryTag, body, error!);
             return;
         }
 
         try
         {
-            // If the device queue is full, it waits → we do not request any more from Rabbit.
-            await dispatcher.DispatchAsync(new TelemetryEnvelope(telemetryEvent, () => Ack(deliveryTag)), CancellationToken.None);
+            // If the device's row is full, this waits → we stop pulling from Rabbit (back-pressure).
+            await dispatcher.DispatchAsync(
+                new TelemetryEnvelope(
+                    telemetryEvent,
+                    Ack: () => Ack(deliveryTag),
+                    Quarantine: reason => QuarantineAndAck(deliveryTag, body, reason)),
+                CancellationToken.None);
         }
         catch (ChannelClosedException)
         {
-            // We are shutting down and the queues are already closed: we do NOT send an ack.
-            // Rabbit will redeliver it to another replica (or to us once we’re back up).
+            // Shutting down and the rows are already closed: no ack → Rabbit will redeliver it.
             logger.LogInformation("Shutting down, delivery {Tag} left for redelivery", deliveryTag);
         }
     }
 
-    private TelemetryEvent? TryDeserialize(ReadOnlySpan<byte> body)
+    private static (TelemetryEvent? Event, string? Error) TryDeserialize(byte[] body)
     {
         try
         {
-            return JsonSerializer.Deserialize<TelemetryEvent>(body, JsonOptions);
+            var telemetryEvent = JsonSerializer.Deserialize<TelemetryEvent>(body, JsonOptions);
+            if (telemetryEvent is null) return (null, "empty payload");
+            if (string.IsNullOrWhiteSpace(telemetryEvent.DeviceId)) return (null, "deviceId is missing");
+            return (telemetryEvent, null);
         }
         catch (JsonException ex)
         {
-            logger.LogWarning(ex, "Invalid JSON");
-            return null;
+            return (null, $"invalid JSON: {ex.Message}");
         }
     }
 
@@ -92,8 +103,27 @@ public sealed class RabbitMqConsumer(
         lock (_channelLock)
         {
             if (_channel is { IsOpen: true })
+            {
                 _channel.BasicAck(deliveryTag, multiple: false);
+            }
         }
+    }
+
+    // Publish to quarantine + ack the original, under the same lock (IModel is not thread-safe).
+    private void QuarantineAndAck(ulong deliveryTag, byte[] body, string reason)
+    {
+        lock (_channelLock)
+        {
+            if (_channel is not { IsOpen: true }) return;
+
+            var props = _channel.CreateBasicProperties();
+            props.Persistent = true;
+            props.Headers = new Dictionary<string, object> { ["x-quarantine-reason"] = reason };
+
+            _channel.BasicPublish(exchange: "", routingKey: _options.QuarantineQueueName, basicProperties: props, body: body);
+            _channel.BasicAck(deliveryTag, multiple: false);
+        }
+        logger.LogWarning("Quarantined delivery {Tag}: {Reason}", deliveryTag, reason);
     }
 
     public void Stop()

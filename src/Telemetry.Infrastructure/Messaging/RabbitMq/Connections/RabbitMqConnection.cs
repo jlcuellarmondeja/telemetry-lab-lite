@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using System.Reflection;
-using Telemetry.Infrastructure.Messaging.RabbitMq.Options;
+using Telemetry.Infrastructure.Options;
 
 namespace Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
 

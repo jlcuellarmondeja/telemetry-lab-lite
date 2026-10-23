@@ -19,7 +19,9 @@ public static class TelemetryDependencyInjection
                 "Dispatcher: Partitions and PartitionCapacity must be greater than 0")
             .ValidateOnStart();
 
-        services.AddSingleton<ITelemetryProcessor, LoggingTelemetryProcessor>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<ITelemetryProcessor, TelemetryProcessor>();
+
         services.AddSingleton<PartitionedDispatcher>();
         return services;
     }
