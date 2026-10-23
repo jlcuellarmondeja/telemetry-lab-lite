@@ -3,6 +3,7 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Telemetry.Domain/Telemetry.Domain.csproj" />
     <Project Path="src/Telemetry.Producer/Telemetry.Producer.csproj" />
     <Project Path="src/Telemetry.Worker/Telemetry.Worker.csproj" />
   </Folder>
