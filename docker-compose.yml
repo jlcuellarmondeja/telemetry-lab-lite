@@ -1,5 +1,5 @@
 services:
-  rabbitmq:
+  telemetry.rabbitmq:
     image: rabbitmq:3.13-management
     container_name: telemetry-rabbitmq
     ports:
@@ -13,3 +13,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  
+  telemetry.producer:
+    image: ${DOCKER_REGISTRY-}telemetryproducer
+    build:
+      context: .
+      dockerfile: src/Telemetry.Producer/Dockerfile
+    environment:
+      RABBITMQ_HOST: telemetry.rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
+    command: ["--rate", "200", "--devices", "50"]
+    depends_on:
+      telemetry.rabbitmq:
+        condition: service_healthy
+
+  telemetry.worker:
+    image: ${DOCKER_REGISTRY-}telemetryworker
+    build:
+      context: .
+      dockerfile: src/Telemetry.Worker/Dockerfile
+    environment:
+      RABBITMQ_HOST: telemetry.rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "8080:8080"
+    depends_on:
+      telemetry.rabbitmq:
+        condition: service_healthy
+
