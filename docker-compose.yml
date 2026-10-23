@@ -34,9 +34,10 @@ services:
       context: .
       dockerfile: src/Telemetry.Worker/Dockerfile
     environment:
-      RABBITMQ_HOST: telemetry.rabbitmq
-      RABBITMQ_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_PASS: ${RABBITMQ_PASS:-guest}
+      RabbitMq__Host: telemetry.rabbitmq
+      RabbitMq__UserName: ${RABBITMQ_USER:-guest}
+      RabbitMq__Password: ${RABBITMQ_PASS:-guest}
+      RabbitMq__PrefetchCount: "100"
     ports:
       - "8080:8080"
     depends_on:
