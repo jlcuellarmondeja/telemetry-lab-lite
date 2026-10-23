@@ -1,15 +1,20 @@
-var builder = WebApplication.CreateBuilder(args);
+using Telemetry.Infrastructure.DI;
+using Telemetry.Worker.Workers;
 
-// This is intentionally bare. The app runs and exposes /health out of the box
-// so your container has something to probe. Everything else — the consumer,
-// processing, persistence, shutdown handling — is yours to build.
+internal class Program
+{
+    private static void Main(string[] args)
+    {
+        var builder = WebApplication.CreateBuilder(args);
 
-var app = builder.Build();
+        builder.Services.AddTelemetry();
+        builder.Services.AddRabbitMq(builder.Configuration);
+        builder.Services.AddHostedService<TelemetryConsumerWorker>();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        var app = builder.Build();
 
-// Build your worker from here. A BackgroundService that consumes from RabbitMQ
-// (queue name: "telemetry.events") is the expected starting point, but the
-// shape is up to you.
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-app.Run();
+        app.Run();
+    }
+}
