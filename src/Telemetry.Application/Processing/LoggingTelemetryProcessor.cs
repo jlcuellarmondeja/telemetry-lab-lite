@@ -5,7 +5,7 @@ using Telemetry.Domain.Validation;
 
 namespace Telemetry.Application.Processing;
 
-public sealed class TelemetryProcessor(TimeProvider timeProvider, ILogger<TelemetryProcessor> logger) : ITelemetryProcessor
+public sealed class LoggingTelemetryProcessor(TimeProvider timeProvider, ILogger<LoggingTelemetryProcessor> logger) : ITelemetryProcessor
 {
     public Task<ProcessingResult> ProcessAsync(TelemetryEvent telemetryEvent, CancellationToken cancellationToken)
     {

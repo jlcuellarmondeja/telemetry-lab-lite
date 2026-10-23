@@ -84,6 +84,11 @@ public sealed class PartitionedDispatcher
                     continue;
                 }
 
+                if (result.Outcome == ProcessingOutcome.Duplicate)
+                {
+                    _logger.LogInformation("Duplicate {EventId} skipped", envelope.Event.EventId);
+                }
+
                 envelope.Ack();
             }
             catch (Exception ex)

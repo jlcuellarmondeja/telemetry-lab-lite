@@ -9,6 +9,8 @@ internal class Program
 
         builder.Services.AddTelemetry(builder.Configuration);
         builder.Services.AddRabbitMq(builder.Configuration);
+        builder.Services.AddInMemoryDeduplication(builder.Configuration);
+
         builder.Services.AddHostedService<TelemetryConsumerWorker>();
 
         var app = builder.Build();
