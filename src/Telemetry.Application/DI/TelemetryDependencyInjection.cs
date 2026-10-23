@@ -1,15 +1,26 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Telemetry.Application.Abstractions;
+using Telemetry.Application.Dispatching;
+using Telemetry.Application.Options;
 using Telemetry.Application.Processing;
 
 namespace Telemetry.Infrastructure.DI;
 
 public static class TelemetryDependencyInjection
 {
-    public static IServiceCollection AddTelemetry(this IServiceCollection services)
+    public static IServiceCollection AddTelemetry(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddSingleton<ITelemetryMessageHandler, LoggingTelemetryMessageHandler>();
+        //  services.AddSingleton<ITelemetryMessageHandler, LoggingTelemetryMessageHandler>();
 
+        services.AddOptions<DispatcherOptions>()
+            .Bind(configuration.GetSection(DispatcherOptions.SectionName))
+            .Validate(o => o.Partitions > 0 && o.PartitionCapacity > 0,
+                "Dispatcher: Partitions and PartitionCapacity must be greater than 0")
+            .ValidateOnStart();
+
+        services.AddSingleton<ITelemetryProcessor, LoggingTelemetryProcessor>();
+        services.AddSingleton<PartitionedDispatcher>();
         return services;
     }
 }

@@ -7,7 +7,7 @@ internal class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        builder.Services.AddTelemetry();
+        builder.Services.AddTelemetry(builder.Configuration);
         builder.Services.AddRabbitMq(builder.Configuration);
         builder.Services.AddHostedService<TelemetryConsumerWorker>();
 

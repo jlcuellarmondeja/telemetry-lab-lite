@@ -2,7 +2,10 @@
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using Telemetry.Application.Abstractions;
+using System.Text.Json;
+using System.Threading.Channels;
+using Telemetry.Application.Dispatching;
+using Telemetry.Domain.Events;
 using Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
 using Telemetry.Infrastructure.Messaging.RabbitMq.Options;
 
@@ -11,10 +14,17 @@ namespace Telemetry.Infrastructure.Messaging.RabbitMq.Consumers;
 public sealed class RabbitMqConsumer(
     RabbitMqConnection connection,
     IOptions<RabbitMqOptions> options,
-    ITelemetryMessageHandler handler,
+    PartitionedDispatcher dispatcher,
     ILogger<RabbitMqConsumer> logger) : IDisposable
 {
+    // Web = case-sensitive regarding names. The producer sends "EventId", the PDF sends "eventId".
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly RabbitMqOptions _options = options.Value;
+
+    // IModel is not thread-safe, and now 8 cashiers are sending ACKs simultaneously — hence, a lock.
+    private readonly object _channelLock = new();
+
     private IModel? _channel;
     private string? _consumerTag;
 
@@ -39,23 +49,60 @@ public sealed class RabbitMqConsumer(
 
     private async Task OnReceivedAsync(object sender, BasicDeliverEventArgs ea)
     {
+        var deliveryTag = ea.DeliveryTag;
+
+        var telemetryEvent = TryDeserialize(ea.Body.Span);
+        if (telemetryEvent is null || string.IsNullOrWhiteSpace(telemetryEvent.DeviceId))
+        {
+            // Poison: Malformed JSON or missing deviceId (we wouldn't know which row to send it to).
+            // Never re-enqueued. Block ③: instead of just an 'ack', it will be sent to the quarantine queue.
+            logger.LogWarning("Poison message discarded (delivery {Tag})", deliveryTag);
+            Ack(deliveryTag);
+            return;
+        }
+
         try
         {
-            await handler.HandleAsync(ea.Body, CancellationToken.None);
-            _channel!.BasicAck(ea.DeliveryTag, multiple: false);
+            // If the device queue is full, it waits → we do not request any more from Rabbit.
+            await dispatcher.DispatchAsync(new TelemetryEnvelope(telemetryEvent, () => Ack(deliveryTag)), CancellationToken.None);
         }
-        catch (Exception ex)
+        catch (ChannelClosedException)
         {
-            // Nunca requeue:true aquí → bucle infinito con poison messages.
-            logger.LogError(ex, "Failed to handle delivery {Tag}", ea.DeliveryTag);
-            _channel!.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+            // We are shutting down and the queues are already closed: we do NOT send an ack.
+            // Rabbit will redeliver it to another replica (or to us once we’re back up).
+            logger.LogInformation("Shutting down, delivery {Tag} left for redelivery", deliveryTag);
+        }
+    }
+
+    private TelemetryEvent? TryDeserialize(ReadOnlySpan<byte> body)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<TelemetryEvent>(body, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(ex, "Invalid JSON");
+            return null;
+        }
+    }
+
+    private void Ack(ulong deliveryTag)
+    {
+        lock (_channelLock)
+        {
+            if (_channel is { IsOpen: true })
+                _channel.BasicAck(deliveryTag, multiple: false);
         }
     }
 
     public void Stop()
     {
-        if (_consumerTag is not null && _channel is { IsOpen: true })
-            _channel.BasicCancel(_consumerTag);
+        lock (_channelLock)
+        {
+            if (_consumerTag is not null && _channel is { IsOpen: true })
+                _channel.BasicCancel(_consumerTag);
+        }
     }
 
     public void Dispose()
