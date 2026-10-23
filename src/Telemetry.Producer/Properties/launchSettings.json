@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Telemetry.Producer": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

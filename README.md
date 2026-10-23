@@ -11,8 +11,8 @@ Everything else is yours.
 
 ```
 src/
-  Producer/      # Done for you. Pushes telemetry events to RabbitMQ.
-  Worker/        # Bare: runs, exposes /health, has the event contract. Build the rest.
+  Telemetry.Producer/  # Done for you. Pushes telemetry events to RabbitMQ.
+  Telemetry.Worker/    # Bare: runs, exposes /health, has the event contract. Build the rest.
 docker-compose.yml   # RabbitMQ + management UI.
 ```
 
@@ -33,7 +33,7 @@ docker compose up -d
 ## Run the producer (event source)
 
 ```bash
-cd src/Producer
+cd src/Telemetry.Producer
 dotnet run -- --rate 200 --devices 50
 #   --rate            events per second (default 100)
 #   --devices         number of distinct deviceIds (default 20)
@@ -47,7 +47,7 @@ can demonstrate idempotency and poison-message handling.
 ## Run the worker
 
 ```bash
-cd src/Worker
+cd src/Telemetry.Worker
 dotnet run
 # Health: GET http://localhost:8080/health
 ```
