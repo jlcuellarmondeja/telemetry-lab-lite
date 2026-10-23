@@ -9,7 +9,5 @@
     <Project Path="src/Telemetry.Producer/Telemetry.Producer.csproj" />
     <Project Path="src/Telemetry.Worker/Telemetry.Worker.csproj" />
   </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Telemetry.UnitTests/Telemetry.UnitTests.csproj" />
-  </Folder>
+  <Folder Name="/tests/" />
 </Solution>

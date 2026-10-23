@@ -1,4 +1,4 @@
-namespace Telemetry.Domain;
+namespace Telemetry.Domain.Events;
 
 /// <summary>
 /// The telemetry event contract emitted by the Producer (same schema as the
