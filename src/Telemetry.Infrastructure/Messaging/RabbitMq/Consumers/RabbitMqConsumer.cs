@@ -5,6 +5,7 @@ using RabbitMQ.Client.Events;
 using System.Text.Json;
 using System.Threading.Channels;
 using Telemetry.Application.Dispatching;
+using Telemetry.Application.Stats;
 using Telemetry.Domain.Events;
 using Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
 using Telemetry.Infrastructure.Options;
@@ -15,6 +16,7 @@ public sealed class RabbitMqConsumer(
     RabbitMqConnection connection,
     IOptions<RabbitMqOptions> options,
     PartitionedDispatcher dispatcher,
+    PipelineStats stats,
     ILogger<RabbitMqConsumer> logger) : IDisposable
 {
     // Web = case-sensitive regarding names. The producer sends "EventId", the PDF sends "eventId".
@@ -52,6 +54,8 @@ public sealed class RabbitMqConsumer(
 
     private async Task OnReceivedAsync(object sender, BasicDeliverEventArgs ea)
     {
+        stats.RecordReceived();
+
         var deliveryTag = ea.DeliveryTag;
 
         // COPY: RabbitMQ reuses ea.Body's buffer once this method returns,
@@ -61,6 +65,8 @@ public sealed class RabbitMqConsumer(
         var (telemetryEvent, error) = TryDeserialize(body);
         if (telemetryEvent is null)
         {
+            stats.RecordQuarantined();
+
             // Poison (broken JSON / no deviceId): we can't even pick a row → quarantine right here.
             QuarantineAndAck(deliveryTag, body, error!);
             return;

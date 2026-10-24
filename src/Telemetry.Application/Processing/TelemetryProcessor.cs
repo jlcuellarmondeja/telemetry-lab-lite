@@ -7,6 +7,7 @@ namespace Telemetry.Application.Processing;
 
 public sealed class TelemetryProcessor(
     IDeduplicationStore deduplication,
+    IDeviceStatsStore deviceStats,
     TimeProvider timeProvider,
     ILogger<TelemetryProcessor> logger) : ITelemetryProcessor
 {
@@ -24,6 +25,10 @@ public sealed class TelemetryProcessor(
         try
         {
             // 3. Block: persistence with retries. Block: per-device counter.
+
+            // 4. Count it. Only valid, non-duplicate events reach this line → counted exactly once.
+            deviceStats.RecordValidEvent(telemetryEvent.DeviceId, telemetryEvent.Timestamp);
+
             logger.LogDebug("Processed {DeviceId} {EventId}", telemetryEvent.DeviceId, telemetryEvent.EventId);
             return Task.FromResult(ProcessingResult.Ok);
         }

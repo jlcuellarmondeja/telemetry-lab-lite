@@ -4,6 +4,7 @@ using System.Threading.Channels;
 using Telemetry.Application.Abstractions;
 using Telemetry.Application.Options;
 using Telemetry.Application.Processing;
+using Telemetry.Application.Stats;
 
 namespace Telemetry.Application.Dispatching;
 
@@ -15,15 +16,18 @@ public sealed class PartitionedDispatcher
 {
     private readonly Channel<TelemetryEnvelope>[] _partitions;
     private readonly ITelemetryProcessor _processor;
+    private readonly PipelineStats _stats;
     private readonly ILogger<PartitionedDispatcher> _logger;
     private Task[] _readers = [];
 
     public PartitionedDispatcher(
         IOptions<DispatcherOptions> options,
         ITelemetryProcessor processor,
+        PipelineStats stats,
         ILogger<PartitionedDispatcher> logger)
     {
         _processor = processor;
+        _stats = stats;
         _logger = logger;
 
         var o = options.Value;
@@ -77,23 +81,30 @@ public sealed class PartitionedDispatcher
             {
                 var result = await _processor.ProcessAsync(envelope.Event, CancellationToken.None);
 
-                if (result.Outcome == ProcessingOutcome.Invalid)
+                switch (result.Outcome)
                 {
-                    _logger.LogWarning("Quarantining {EventId}: {Reason}", envelope.Event.EventId, result.Reason);
-                    envelope.Quarantine(result.Reason!);
-                    continue;
-                }
+                    case ProcessingOutcome.Invalid:
+                        _stats.RecordQuarantined();
+                        _logger.LogWarning("Quarantining {EventId}: {Reason}", envelope.Event.EventId, result.Reason);
+                        envelope.Quarantine(result.Reason!);
+                        break;
 
-                if (result.Outcome == ProcessingOutcome.Duplicate)
-                {
-                    _logger.LogInformation("Duplicate {EventId} skipped", envelope.Event.EventId);
-                }
+                    case ProcessingOutcome.Duplicate:
+                        _stats.RecordDuplicate();
+                        _logger.LogInformation("Duplicate {EventId} skipped", envelope.Event.EventId);
+                        envelope.Ack();
+                        break;
 
-                envelope.Ack();
+                    default:
+                        _stats.RecordProcessed();
+                        envelope.Ack();
+                        break;
+                }
             }
             catch (Exception ex)
             {
-                // A failure NEVER kills the reader or blocks the row.
+                // A failure NEVER kills the reader or blocks the row. (Block ⑤: DLQ instead of ack.)
+                _stats.RecordFailed();
                 _logger.LogError(ex, "Partition {Partition} failed processing {EventId}", partition, envelope.Event.EventId);
                 envelope.Ack();
             }
