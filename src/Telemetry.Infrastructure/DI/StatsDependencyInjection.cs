@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Telemetry.Application.Abstractions;
-using Telemetry.Application.Stats;
+using Telemetry.Infrastructure.Stats;
 
 namespace Telemetry.Infrastructure.DI;
 

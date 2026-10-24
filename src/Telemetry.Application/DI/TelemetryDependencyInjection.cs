@@ -6,7 +6,7 @@ using Telemetry.Application.Options;
 using Telemetry.Application.Processing;
 using Telemetry.Application.Stats;
 
-namespace Telemetry.Infrastructure.DI;
+namespace Telemetry.Application.DI;
 
 public static class TelemetryDependencyInjection
 {

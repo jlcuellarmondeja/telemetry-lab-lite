@@ -1,4 +1,5 @@
 using Telemetry.Application.Abstractions;
+using Telemetry.Application.DI;
 using Telemetry.Application.Stats;
 using Telemetry.Infrastructure.DI;
 using Telemetry.Worker.Dtos;

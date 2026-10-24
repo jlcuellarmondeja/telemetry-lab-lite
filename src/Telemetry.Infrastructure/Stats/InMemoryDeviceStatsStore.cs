@@ -1,7 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using Telemetry.Application.Abstractions;
+using Telemetry.Application.Stats;
 
-namespace Telemetry.Application.Stats;
+namespace Telemetry.Infrastructure.Stats;
 
 public sealed class InMemoryDeviceStatsStore : IDeviceStatsStore
 {
