@@ -1,0 +1,25 @@
+# BONUS (example, not applied by default). Requires KEDA installed in the cluster.
+# For a queue consumer, CPU is a poor signal: the right one is QUEUE DEPTH (backlog).
+# KEDA reads the RabbitMQ queue length and scales replicas to keep ~N messages per pod.
+#
+# CAVEAT: scaling above 1 replica breaks per-device ordering with a single shared queue.
+# Enable it only after moving partitioning to the broker (consistent-hash exchange →
+# one queue per partition, each consumed by one pod), or if ordering is not required.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: telemetry-worker
+spec:
+  scaleTargetRef:
+    name: telemetry-worker
+  minReplicaCount: 1
+  maxReplicaCount: 1        # raise once broker-side partitioning exists
+  cooldownPeriod: 120
+  triggers:
+    - type: rabbitmq
+      metadata:
+        queueName: telemetry.events
+        mode: QueueLength
+        value: "500"        # target backlog per replica
+      authenticationRef:
+        name: telemetry-rabbitmq-auth   # TriggerAuthentication reading the host URL from a Secret

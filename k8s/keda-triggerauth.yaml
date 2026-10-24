@@ -1,0 +1,13 @@
+# BONUS (goes with keda-scaledobject.example.yaml). Requires KEDA installed in the cluster.
+# Tells KEDA where to read the broker URL from (a Secret, never inline). Create it with:
+#   kubectl -n telemetry create secret generic telemetry-rabbitmq-keda \
+#     --from-literal=host=amqp://<user>:<password>@rabbitmq:5672/
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: telemetry-rabbitmq-auth
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: telemetry-rabbitmq-keda
+      key: host
