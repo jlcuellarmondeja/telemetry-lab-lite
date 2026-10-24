@@ -13,11 +13,11 @@ public sealed class TelemetryConsumerWorker(
     {
         await Task.Yield(); // do not block host startup (or /health)
 
-        dispatcher.Start(); // 1st: open the cashiers
+        dispatcher.Start(); // 1st: start the partition readers
 
         try
         {
-            await consumer.StartAsync(stoppingToken);       // 2nd: open the door (retries until the broker is up)
+            await consumer.StartAsync(stoppingToken);       // 2nd: start consuming (retries until the broker is up)
             await Task.Delay(Timeout.Infinite, stoppingToken); // work until SIGTERM / Ctrl+C
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -26,11 +26,11 @@ public sealed class TelemetryConsumerWorker(
         }
         finally
         {
-            logger.LogInformation("Shutdown requested: closing the door and draining in-flight work");
+            logger.LogInformation("Shutdown requested: stopping consumption and draining in-flight work");
             var elapsed = Stopwatch.StartNew();
 
-            consumer.Stop();                  // 1st: close the door → Rabbit sends nothing new
-            await dispatcher.CompleteAsync(); // 2nd: cashiers finish their rows (and ack them)
+            consumer.Stop();                  // 1st: stop consuming → Rabbit sends nothing new
+            await dispatcher.CompleteAsync(); // 2nd: partitions drain their in-flight work (and ack it)
 
             logger.LogInformation("All partitions drained in {Elapsed} ms", elapsed.ElapsedMilliseconds);
         }

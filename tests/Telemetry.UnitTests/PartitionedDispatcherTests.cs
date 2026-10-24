@@ -73,7 +73,7 @@ public class PartitionedDispatcherTests
         Assert.That(_stats.Snapshot().DeadLettered, Is.EqualTo(1));
     }
 
-    // Req 2 (graceful shutdown): closing the rows drains all in-flight work, nothing is lost.
+    // Req 2 (graceful shutdown): completing the partitions drains all in-flight work, nothing is lost.
     [Test]
     public async Task Complete_DrainsEverything_AndAcksEveryMessage()
     {
@@ -82,7 +82,7 @@ public class PartitionedDispatcherTests
         Assert.That(_acks, Is.EqualTo(200));
     }
 
-    // Start → send everything → close rows and wait for them to drain (= what shutdown does).
+    // Start → send everything → complete the partitions and wait for them to drain (= what shutdown does).
     // PartitionCapacity 10 < 200 events, so back-pressure (writer waits) is exercised too.
     private async Task<List<TelemetryEvent>> RunAsync(ITelemetryProcessor processor, IEnumerable<TelemetryEvent> events)
     {

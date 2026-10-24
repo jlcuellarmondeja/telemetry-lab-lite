@@ -18,7 +18,7 @@ internal sealed class ProbeProcessor : ITelemetryProcessor
         if (telemetryEvent.DeviceId == "poison") return ProcessingResult.Invalid("bad data");
 
         lock (_lock) { _current++; MaxConcurrency = Math.Max(MaxConcurrency, _current); }
-        await Task.Delay(20); // keep the "cashier" busy so overlaps become visible
+        await Task.Delay(20); // keep the partition reader busy so overlaps become visible
         lock (_lock) { _current--; }
 
         return ProcessingResult.Ok;

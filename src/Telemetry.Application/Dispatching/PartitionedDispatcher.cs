@@ -8,9 +8,9 @@ using Telemetry.Application.Stats;
 
 namespace Telemetry.Application.Dispatching;
 
-// Distribute events across N rows based on their deviceId.
-// - Same deviceId → same row → processed in order.
-// - Different rows → processed in parallel.
+// Distributes events across N partitions based on their deviceId.
+// - Same deviceId → same partition → processed in order.
+// - Different partitions → processed in parallel.
 // - N fixed readers → bounded concurrency (never one Task per message).
 public sealed class PartitionedDispatcher
 {
@@ -37,14 +37,14 @@ public sealed class PartitionedDispatcher
         {
             _partitions[i] = Channel.CreateBounded<TelemetryEnvelope>(new BoundedChannelOptions(o.PartitionCapacity)
             {
-                FullMode = BoundedChannelFullMode.Wait, // queue full → writer waits (back-pressure)
-                SingleReader = true,                    // a single processor for the queue → order guaranteed
+                FullMode = BoundedChannelFullMode.Wait, // partition full → writer waits (back-pressure)
+                SingleReader = true,                    // one reader per partition → order guaranteed
                 SingleWriter = true                     // only the consumer writes
             });
         }
     }
 
-    // Open the boxes: one fixed reader per row.
+    // Starts one long-lived reader per partition.
     public void Start()
     {
         _readers = _partitions
@@ -52,7 +52,7 @@ public sealed class PartitionedDispatcher
             .ToArray();
     }
 
-    // Put the event in the row of its device. If the row is full, wait.
+    // Writes the event to its device's partition. If the partition is full, waits.
     public ValueTask DispatchAsync(TelemetryEnvelope envelope, CancellationToken cancellationToken)
         => _partitions[GetPartition(envelope.Event.DeviceId)].Writer.WriteAsync(envelope, cancellationToken);
 
@@ -61,7 +61,7 @@ public sealed class PartitionedDispatcher
     public int GetPartition(string deviceId)
         => (StringComparer.Ordinal.GetHashCode(deviceId) & int.MaxValue) % _partitions.Length;
 
-    // Close the rows (no new items enter) and wait for the cashiers to drain what they have.
+    // Completes every partition (no new writes) and waits for the readers to drain what is left.
     public async Task CompleteAsync()
     {
         foreach (var partition in _partitions)
@@ -74,7 +74,7 @@ public sealed class PartitionedDispatcher
 
     private async Task ReadPartitionAsync(ChannelReader<TelemetryEnvelope> reader, int partition)
     {
-        // ReadAllAsync ends only when the row is completed AND empty → natural draining.
+        // ReadAllAsync ends only when the partition is completed AND empty → natural draining.
         await foreach (var envelope in reader.ReadAllAsync())
         {
             try

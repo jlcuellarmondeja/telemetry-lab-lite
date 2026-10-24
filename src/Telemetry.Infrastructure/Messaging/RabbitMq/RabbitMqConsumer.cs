@@ -24,7 +24,7 @@ public sealed class RabbitMqConsumer(
 
     private readonly RabbitMqOptions _options = options.Value;
 
-    // IModel is not thread-safe, and now 8 cashiers are sending ACKs simultaneously — hence, a lock.
+    // IModel is not thread-safe, and all partition readers ack concurrently — hence, a lock.
     private readonly object _channelLock = new();
 
     private IModel? _channel;
@@ -99,14 +99,14 @@ public sealed class RabbitMqConsumer(
         {
             stats.RecordQuarantined();
 
-            // Poison (broken JSON / no deviceId): we can't even pick a row → quarantine right here.
+            // Poison (broken JSON / no deviceId): we can't even pick a partition → quarantine right here.
             PublishAndAck(deliveryTag, body, _options.QuarantineQueueName, "x-quarantine-reason", error!);
             return;
         }
 
         try
         {
-            // If the device's row is full, this waits → we stop pulling from Rabbit (back-pressure).
+            // If the device's partition is full, this waits → we stop pulling from Rabbit (back-pressure).
             await dispatcher.DispatchAsync(
                 new TelemetryEnvelope(
                     telemetryEvent,
@@ -117,7 +117,7 @@ public sealed class RabbitMqConsumer(
         }
         catch (ChannelClosedException)
         {
-            // Shutting down and the rows are already closed: no ack → Rabbit will redeliver it.
+            // Shutting down and the partitions are already completed: no ack → Rabbit will redeliver it.
             logger.LogInformation("Shutting down, delivery {Tag} left for redelivery", deliveryTag);
         }
     }
