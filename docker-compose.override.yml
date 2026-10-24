@@ -1,10 +1,6 @@
+# Visual Studio local overrides (auto-loaded by `docker compose up`).
+# Keep it portable: no host-specific paths (e.g. ${APPDATA}) and no extra ports.
 services:
   telemetry.worker:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_HTTP_PORTS=8080
-    ports:
-      - "8080"
-    volumes:
-      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
-      - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
