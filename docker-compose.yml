@@ -40,6 +40,7 @@ services:
       RabbitMq__Password: ${RABBITMQ_PASS:-guest}
       RabbitMq__PrefetchCount: "100"
       Persistence__FaultInjectionRate: "0.2"   # brief: the dependency fails ~20% of the time
+    stop_grace_period: 30s   # docker default is 10s; same budget as Kubernetes
     ports:
       - "8080:8080"
     depends_on:

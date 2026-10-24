@@ -19,6 +19,10 @@ internal class Program
 
         builder.Services.AddHostedService<TelemetryConsumerWorker>();
 
+        // The drain must finish BEFORE Kubernetes kills the pod (terminationGracePeriodSeconds: 30).
+        builder.Services.Configure<HostOptions>(o =>
+            o.ShutdownTimeout = builder.Configuration.GetValue("ShutdownTimeout", TimeSpan.FromSeconds(25)));
+
         var app = builder.Build();
 
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));

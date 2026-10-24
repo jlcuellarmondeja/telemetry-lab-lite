@@ -2,15 +2,15 @@
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
 using System.Text.Json;
 using System.Threading.Channels;
 using Telemetry.Application.Dispatching;
 using Telemetry.Application.Stats;
 using Telemetry.Domain.Events;
-using Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
 using Telemetry.Infrastructure.Options;
 
-namespace Telemetry.Infrastructure.Messaging.RabbitMq.Consumers;
+namespace Telemetry.Infrastructure.Messaging.RabbitMq;
 
 public sealed class RabbitMqConsumer(
     RabbitMqConnection connection,
@@ -30,7 +30,36 @@ public sealed class RabbitMqConsumer(
     private IModel? _channel;
     private string? _consumerTag;
 
-    public void Start()
+    private static readonly TimeSpan MaxConnectDelay = TimeSpan.FromSeconds(30);
+
+    // The broker may not be ready yet (pod started before RabbitMQ): instead of crashing,
+    // retry with exponential backoff + jitter. Gives up as soon as shutdown is requested.
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        var delay = TimeSpan.FromSeconds(1);
+
+        while (true)
+        {
+            try
+            {
+                Start();
+                return;
+            }
+            catch (BrokerUnreachableException ex)
+            {
+                var wait = delay + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500)); // jitter
+                
+                logger.LogWarning("RabbitMQ unreachable ({Reason}), retrying in {Delay}",
+                                  ex.InnerException?.Message ?? ex.Message, wait);
+
+                await Task.Delay(wait, cancellationToken); // throws if we are shutting down → stop trying
+
+                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, MaxConnectDelay.Ticks)); // 1s, 2s, 4s… max 30s
+            }
+        }
+    }
+
+    private void Start()
     {
         _channel = connection.CreateChannel();
 

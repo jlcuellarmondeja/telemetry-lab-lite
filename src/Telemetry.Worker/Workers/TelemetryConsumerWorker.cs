@@ -1,5 +1,6 @@
-﻿using Telemetry.Application.Dispatching;
-using Telemetry.Infrastructure.Messaging.RabbitMq.Consumers;
+﻿using System.Diagnostics;
+using Telemetry.Application.Dispatching;
+using Telemetry.Infrastructure.Messaging.RabbitMq;
 
 namespace Telemetry.Worker.Workers;
 
@@ -12,19 +13,26 @@ public sealed class TelemetryConsumerWorker(
     {
         await Task.Yield(); // do not block host startup (or /health)
 
-        dispatcher.Start(); // 1st: open the boxes
-        consumer.Start();   // 2nd: open the door
+        dispatcher.Start(); // 1st: open the cashiers
 
         try
         {
-            await Task.Delay(Timeout.Infinite, stoppingToken);
+            await consumer.StartAsync(stoppingToken);       // 2nd: open the door (retries until the broker is up)
+            await Task.Delay(Timeout.Infinite, stoppingToken); // work until SIGTERM / Ctrl+C
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Normal shutdown signal.
+        }
         finally
         {
-            consumer.Stop();                  // 1st: close the door: no new messages will be received
-            await dispatcher.CompleteAsync(); // 2nd: attend to those already in the queues (and acknowledge them)
-            logger.LogInformation("All partitions drained");
+            logger.LogInformation("Shutdown requested: closing the door and draining in-flight work");
+            var elapsed = Stopwatch.StartNew();
+
+            consumer.Stop();                  // 1st: close the door → Rabbit sends nothing new
+            await dispatcher.CompleteAsync(); // 2nd: cashiers finish their rows (and ack them)
+
+            logger.LogInformation("All partitions drained in {Elapsed} ms", elapsed.ElapsedMilliseconds);
         }
     }
 }

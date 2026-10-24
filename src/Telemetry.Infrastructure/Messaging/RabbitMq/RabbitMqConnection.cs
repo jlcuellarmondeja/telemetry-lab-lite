@@ -3,11 +3,13 @@ using RabbitMQ.Client;
 using System.Reflection;
 using Telemetry.Infrastructure.Options;
 
-namespace Telemetry.Infrastructure.Messaging.RabbitMq.Connections;
+namespace Telemetry.Infrastructure.Messaging.RabbitMq;
 
 public sealed class RabbitMqConnection : IDisposable
 {
-    private readonly Lazy<IConnection> _connection;
+    private readonly ConnectionFactory _factory;
+    private readonly object _lock = new();
+    private IConnection? _connection;
 
     public RabbitMqConnection(IOptions<RabbitMqOptions> options)
     {
@@ -17,7 +19,7 @@ public sealed class RabbitMqConnection : IDisposable
             ? Assembly.GetEntryAssembly()?.GetName().Name ?? "unknown"
             : o.ClientName;
 
-        var factory = new ConnectionFactory
+        _factory = new ConnectionFactory
         {
             HostName = o.Host,
             Port = o.Port,
@@ -25,16 +27,27 @@ public sealed class RabbitMqConnection : IDisposable
             Password = o.Password,
             VirtualHost = o.VirtualHost,
             DispatchConsumersAsync = true,   // required for AsyncEventingBasicConsumer
-            AutomaticRecoveryEnabled = true, // reconnect only if the broker goes down
+            AutomaticRecoveryEnabled = true, // reconnect if the broker drops AFTER we connected
             ClientProvidedName = $"{clientName}@{Environment.MachineName}"
         };
-        _connection = new Lazy<IConnection>(() => factory.CreateConnection());
     }
 
-    public IModel CreateChannel() => _connection.Value.CreateModel();
+    // Not Lazy<T>: Lazy caches the exception, so a failed first connect would fail forever.
+    // Here a failure leaves _connection null and the next call simply tries again.
+    public IModel CreateChannel()
+    {
+        lock (_lock)
+        {
+            _connection ??= _factory.CreateConnection();
+            return _connection.CreateModel();
+        }
+    }
 
     public void Dispose()
     {
-        if (_connection.IsValueCreated) _connection.Value.Dispose();
+        lock (_lock)
+        {
+            _connection?.Dispose();
+        }
     }
 }
