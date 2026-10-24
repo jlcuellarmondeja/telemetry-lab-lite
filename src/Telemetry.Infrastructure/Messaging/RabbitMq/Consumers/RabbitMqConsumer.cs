@@ -40,6 +40,9 @@ public sealed class RabbitMqConsumer(
         // Quarantine queue: must exist before publishing, otherwise Rabbit silently drops the message.
         _channel.QueueDeclare(_options.QuarantineQueueName, durable: true, exclusive: false, autoDelete: false, arguments: null);
 
+        // Dead-letter queue: events that still fail after all retries.
+        _channel.QueueDeclare(_options.DeadLetterQueueName, durable: true, exclusive: false, autoDelete: false, arguments: null);
+
         // THE LIMIT: Rabbit does not send us more than PrefetchCount messages without an acknowledgment.
         _channel.BasicQos(prefetchSize: 0, prefetchCount: _options.PrefetchCount, global: false);
 
@@ -68,7 +71,7 @@ public sealed class RabbitMqConsumer(
             stats.RecordQuarantined();
 
             // Poison (broken JSON / no deviceId): we can't even pick a row → quarantine right here.
-            QuarantineAndAck(deliveryTag, body, error!);
+            PublishAndAck(deliveryTag, body, _options.QuarantineQueueName, "x-quarantine-reason", error!);
             return;
         }
 
@@ -79,7 +82,8 @@ public sealed class RabbitMqConsumer(
                 new TelemetryEnvelope(
                     telemetryEvent,
                     Ack: () => Ack(deliveryTag),
-                    Quarantine: reason => QuarantineAndAck(deliveryTag, body, reason)),
+                    Quarantine: reason => PublishAndAck(deliveryTag, body, _options.QuarantineQueueName, "x-quarantine-reason", reason),
+                    DeadLetter: reason => PublishAndAck(deliveryTag, body, _options.DeadLetterQueueName, "x-dead-letter-reason", reason)),
                 CancellationToken.None);
         }
         catch (ChannelClosedException)
@@ -115,8 +119,8 @@ public sealed class RabbitMqConsumer(
         }
     }
 
-    // Publish to quarantine + ack the original, under the same lock (IModel is not thread-safe).
-    private void QuarantineAndAck(ulong deliveryTag, byte[] body, string reason)
+    // Publish a copy to another queue + ack the original, under the same lock (IModel is not thread-safe).
+    private void PublishAndAck(ulong deliveryTag, byte[] body, string queue, string reasonHeader, string reason)
     {
         lock (_channelLock)
         {
@@ -124,12 +128,12 @@ public sealed class RabbitMqConsumer(
 
             var props = _channel.CreateBasicProperties();
             props.Persistent = true;
-            props.Headers = new Dictionary<string, object> { ["x-quarantine-reason"] = reason };
+            props.Headers = new Dictionary<string, object> { [reasonHeader] = reason };
 
-            _channel.BasicPublish(exchange: "", routingKey: _options.QuarantineQueueName, basicProperties: props, body: body);
+            _channel.BasicPublish(exchange: "", routingKey: queue, basicProperties: props, body: body);
             _channel.BasicAck(deliveryTag, multiple: false);
         }
-        logger.LogWarning("Quarantined delivery {Tag}: {Reason}", deliveryTag, reason);
+        logger.LogWarning("Delivery {Tag} sent to {Queue}: {Reason}", deliveryTag, queue, reason);
     }
 
     public void Stop()

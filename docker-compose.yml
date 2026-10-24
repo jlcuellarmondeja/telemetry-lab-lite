@@ -39,6 +39,7 @@ services:
       RabbitMq__UserName: ${RABBITMQ_USER:-guest}
       RabbitMq__Password: ${RABBITMQ_PASS:-guest}
       RabbitMq__PrefetchCount: "100"
+      Persistence__FaultInjectionRate: "0.2"   # brief: the dependency fails ~20% of the time
     ports:
       - "8080:8080"
     depends_on:

@@ -84,29 +84,52 @@ public sealed class PartitionedDispatcher
                 switch (result.Outcome)
                 {
                     case ProcessingOutcome.Invalid:
+
                         _stats.RecordQuarantined();
+
                         _logger.LogWarning("Quarantining {EventId}: {Reason}", envelope.Event.EventId, result.Reason);
+
                         envelope.Quarantine(result.Reason!);
+
+                        break;
+
+                    case ProcessingOutcome.Failed:
+
+                        _stats.RecordDeadLettered();
+
+                        _logger.LogError("Dead-lettering {EventId}: {Reason}", envelope.Event.EventId, result.Reason);
+
+                        envelope.DeadLetter(result.Reason!);
+
                         break;
 
                     case ProcessingOutcome.Duplicate:
+
                         _stats.RecordDuplicate();
+
                         _logger.LogInformation("Duplicate {EventId} skipped", envelope.Event.EventId);
+
                         envelope.Ack();
+
                         break;
 
                     default:
+
                         _stats.RecordProcessed();
+
                         envelope.Ack();
+
                         break;
                 }
             }
             catch (Exception ex)
             {
-                // A failure NEVER kills the reader or blocks the row. (Block ⑤: DLQ instead of ack.)
-                _stats.RecordFailed();
+                // Unexpected bug: never kill the reader, never lose the message → DLQ.
+                _stats.RecordDeadLettered();
+
                 _logger.LogError(ex, "Partition {Partition} failed processing {EventId}", partition, envelope.Event.EventId);
-                envelope.Ack();
+
+                envelope.DeadLetter($"unexpected error: {ex.Message}");
             }
         }
     }

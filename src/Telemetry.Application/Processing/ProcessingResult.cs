@@ -1,11 +1,12 @@
 ﻿namespace Telemetry.Application.Processing;
 
-public enum ProcessingOutcome { Processed, Invalid, Duplicate }
+public enum ProcessingOutcome { Processed, Invalid, Duplicate, Failed }
 
-// What happened to an event. The dispatcher decides ack vs quarantine from this.
+// What happened to an event. The dispatcher decides ack / quarantine / dead-letter from this.
 public sealed record ProcessingResult(ProcessingOutcome Outcome, string? Reason = null)
 {
     public static readonly ProcessingResult Ok = new(ProcessingOutcome.Processed);
     public static readonly ProcessingResult Duplicate = new(ProcessingOutcome.Duplicate);
     public static ProcessingResult Invalid(string reason) => new(ProcessingOutcome.Invalid, reason);
+    public static ProcessingResult Failed(string reason) => new(ProcessingOutcome.Failed, reason);
 }

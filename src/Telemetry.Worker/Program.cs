@@ -14,6 +14,7 @@ internal class Program
         builder.Services.AddRabbitMq(builder.Configuration);
         builder.Services.AddInMemoryDeduplication(builder.Configuration);
         builder.Services.AddInMemoryStats();
+        builder.Services.AddResilientPersistence(builder.Configuration);
 
         builder.Services.AddHostedService<TelemetryConsumerWorker>();
 

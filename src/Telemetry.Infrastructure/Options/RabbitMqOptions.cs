@@ -21,13 +21,16 @@ public sealed class RabbitMqOptions
     public string Password { get; init; } = default!;
     public string VirtualHost { get; init; } = "/";
 
-    [Required]
-    public string QueueName { get; init; } = default!;
-
     // Maximum number of unacknowledged messages that Rabbit delivers to us at once.
     [Range(1, ushort.MaxValue)]
     public ushort PrefetchCount { get; init; } = 100;
 
     [Required]
+    public string QueueName { get; init; } = default!;
+
+    [Required]
     public string QuarantineQueueName { get; init; } = default!;
+
+    [Required]
+    public string DeadLetterQueueName { get; init; } = default!;
 }
