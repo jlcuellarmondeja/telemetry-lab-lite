@@ -1,0 +1,32 @@
+# DEV ONLY: the provided producer, generating load (with duplicates and poison) inside the cluster.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-producer
+  labels:
+    app.kubernetes.io/name: telemetry-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetry-producer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: telemetry-producer
+    spec:
+      containers:
+        - name: producer
+          image: telemetryproducer:1.0.0      # built locally: docker build -f src/Telemetry.Producer/Dockerfile -t telemetryproducer:1.0.0 .
+          imagePullPolicy: IfNotPresent       # use the local image, don't try a registry
+          args: ["--rate", "200", "--devices", "50"]
+          env:
+            # The producer reads RABBITMQ_* (its own convention, not RabbitMq__*).
+            - name: RABBITMQ_HOST
+              value: rabbitmq                 # Service name of k8s/dev/rabbitmq.yaml
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef: { name: rabbitmq-credentials, key: username }
+            - name: RABBITMQ_PASS
+              valueFrom:
+                secretKeyRef: { name: rabbitmq-credentials, key: password }
