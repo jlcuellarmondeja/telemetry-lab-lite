@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-worker
+  labels:
+    app.kubernetes.io/name: telemetry-worker
+    app.kubernetes.io/part-of: telemetry
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  # Ordering per device is guaranteed by the partitions INSIDE one pod.
+  # Two pods on the same queue would split a device's events → order lost.
+  # Scaling out needs broker-side partitioning (consistent-hash exchange). See README.
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate   # old pod drains and exits BEFORE the new one starts: never two consumers at once
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: telemetry-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: telemetry-worker
+        app.kubernetes.io/part-of: telemetry
+    spec:
+      automountServiceAccountToken: false   # the worker never talks to the Kubernetes API
+      terminationGracePeriodSeconds: 30     # SIGTERM → 30s to drain → SIGKILL (app uses 25s)
+
+      securityContext:                      # pod level
+        runAsNonRoot: true
+        runAsUser: 1654                     # "app" user of the .NET 8 images ($APP_UID)
+        runAsGroup: 1654
+        fsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: worker
+          image: telemetryworker:1.0.0      # pinned tag, never :latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+
+          envFrom:
+            - configMapRef:
+                name: telemetry-worker-config
+            - secretRef:
+                name: telemetry-worker-secrets   # credentials only from the Secret
+
+          resources:
+            requests:                       # what the scheduler reserves
+              cpu: 100m
+              memory: 128Mi
+            limits:                         # hard cap: bounded memory = bounded in-flight work
+              cpu: 500m
+              memory: 256Mi
+
+          # Liveness: is the process alive? If not, restart it.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Readiness: should it be considered "up"? (No inbound traffic here, but rollouts and tooling rely on it.)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          securityContext:                  # container level
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp               # .NET needs a writable /tmp with a read-only root fs
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

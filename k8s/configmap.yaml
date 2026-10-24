@@ -1,0 +1,15 @@
+# Non-secret settings, injected as env vars. "__" maps to nested config sections (RabbitMq:Host).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telemetry-worker-config
+  labels:
+    app.kubernetes.io/name: telemetry-worker
+    app.kubernetes.io/part-of: telemetry
+data:
+  RabbitMq__Host: "rabbitmq"            # in-cluster service name of the broker
+  RabbitMq__PrefetchCount: "100"
+  Dispatcher__Partitions: "8"
+  Dispatcher__PartitionCapacity: "50"
+  Persistence__FaultInjectionRate: "0.2" # brief's flaky dependency; set "0" in a real deployment
+  ShutdownTimeout: "00:00:25"            # must be < terminationGracePeriodSeconds (30)

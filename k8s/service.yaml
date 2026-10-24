@@ -1,0 +1,17 @@
+# Internal only (ClusterIP): exposes /health and /stats inside the cluster.
+# Not public: /stats is operational data.
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry-worker
+  labels:
+    app.kubernetes.io/name: telemetry-worker
+    app.kubernetes.io/part-of: telemetry
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: telemetry-worker
+  ports:
+    - name: http
+      port: 80
+      targetPort: http   # named port → survives a containerPort change
